@@ -15,16 +15,18 @@ from sys import getsizeof
 
 INTERPOLATION = cv2.INTER_LINEAR
 gdal.UseExceptions()
-path_im_ms = '../data/spot6/GEBZE/S6_GEBZE_MS.tiff'
-path_im_pan = '../data/spot6/GEBZE/S6_GEBZE_PAN.tiff'
+# path_im_ms = './data/spot6/GEBZE/S6_GEBZE_MS.tiff'
+# path_im_pan = './data/spot6/GEBZE/S6_GEBZE_PAN.tiff'
+path_im_ms = './data/spot6/URFA2/S6_URFA_MS.JP2'
+path_im_pan = './data/spot6/URFA2/S6_URFA_PAN.JP2'
 
 start = time.time()
-ds_ms = gdal.Open(path_im_ms)
-ds_pan = gdal.Open(path_im_pan)
-np_pan_orj = np.array(ds_pan.GetRasterBand(1).ReadAsArray())
-np_ms1_orj = np.array(ds_ms.GetRasterBand(1).ReadAsArray())
-np_ms2_orj = np.array(ds_ms.GetRasterBand(2).ReadAsArray())
-np_ms3_orj = np.array(ds_ms.GetRasterBand(3).ReadAsArray())
+ds_ms = gdal.Open(path_im_ms, gdal.GA_ReadOnly)
+ds_pan = gdal.Open(path_im_pan, gdal.GA_ReadOnly)
+np_pan_orj = ds_pan.GetRasterBand(1).ReadAsArray()
+np_ms1_orj = ds_ms.GetRasterBand(1).ReadAsArray()
+np_ms2_orj = ds_ms.GetRasterBand(2).ReadAsArray()
+np_ms3_orj = ds_ms.GetRasterBand(3).ReadAsArray()
 np_pan = cv2.resize(np_pan_orj, dsize=(ds_pan.RasterXSize/4,
                                        ds_pan.RasterYSize/4), interpolation=INTERPOLATION).astype('complex64')
 np_ms1 = cv2.resize(np_ms1_orj, dsize=(ds_ms.RasterXSize/4,
