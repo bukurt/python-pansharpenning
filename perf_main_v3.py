@@ -11,6 +11,29 @@ from osgeo import gdal
 import time
 import matplotlib.pyplot as plt
 import sys, getopt
+"""
+# Default params
+path_im_ms = './data/spot6/GEBZE/S6_GEBZE_MS.tiff'
+path_im_pan = './data/spot6/GEBZE/S6_GEBZE_PAN.tiff'
+path_xml = './data/spot6/GEBZE/S6_GEBZE_MS.XML'
+filter_name = 'ideal_lpf'
+path_im_ps = './data/spot6/GEBZE/OUT.tiff'
+# hist_m = True
+cutoff_freq=.125
+ps_method = 'fft'
+is_multi_thread = False
+run_times = 10
+"""
+path_im_ms = ''
+path_im_pan = ''
+path_xml = ''
+filter_name = ''
+path_im_ps = ''
+# hist_m = True
+cutoff_freq=''
+ps_method = ''
+is_multi_thread = 'False'
+run_times = ''
 
 def load_params(argv):
     global path_im_ms
@@ -19,23 +42,30 @@ def load_params(argv):
     global filter_name
     global cutoff_freq
     global ps_method
-    global hist_m
     global path_im_ps
     global is_multi_thread
+    global run_times
     def usage():
-        print 'test.py --ms-file=<MS File Path> --pan-file=<PAN File Path> --xml-file=<XML File Path> --cutoff-freq=<Cutoff Frequency> --ps-method=<fft, ihs, ihs_fft, lab, lab-fft, brovey, hfm> --histogram-match --out-file=<PS File Path> --multi-thread'
+        msg = """test.py     --ms-file= <MS File Path> 
+                    --pan-file= <PAN File Path> 
+                    --xml-file= <XML File Path> 
+                    --cutoff-freq= <Cutoff Frequency> 
+                    --ps-method= <fft, ihs, ihs_fft, lab, lab-fft, brovey, hfm> 
+                    --histogram-match 
+                    --out-file= <PS File Path> 
+                    --multi-thread"""
+        print msg
     try:
-        opts, args = getopt.getopt(argv,"m:p:x:f:h:c:t:o:a:",["ms-file=","pan-file=","xml-file=","filter=","histogram-match=","cutoff-freq=","ps-method=","out-file=","multi-thread"])
-    except getopt.GetoptError:
+        opts, args = getopt.getopt(argv,"m:p:x:f:c:t:o:a:r:",
+        ["ms-file=","pan-file=","xml-file=","filter=",
+        "cutoff-freq=","ps-method=","out-file=","multi-thread",
+        "run-times="])
+    except Exception as e:
         usage()
+        print(str(e))
         sys.exit(2)
     for opt, arg in opts:
-        if opt in ("-h", "--histogram-match"):
-            if arg in ('n','no','NO','No'):
-                hist_m = False
-            else:
-                hist_m = True
-        elif opt in ("-m", "--ms-file"):
+        if opt in ("-m", "--ms-file"):
             path_im_ms = arg
             print "path ms: ", arg
         elif opt in ("-p", "--pan-file"):
@@ -45,17 +75,16 @@ def load_params(argv):
         elif opt in ("-f","--filter"):
             filter_name = arg
         elif opt in ("-c","--cutoff-freq"):
-            cutoff_freq = arg
+            cutoff_freq = float(arg)
         elif opt in ("-t","--ps-method"):
             ps_method = arg
-        elif opt in ("--histogram-match"):
-            hist_m = True
-        elif opt in ("-o","--out-file="):
+        elif opt in ("-o","--out-file"):
             path_im_ps = arg
-        elif opt in ("-a","--multi-thread="):
+        elif opt in ("-a","--multi-thread"):
             is_multi_thread = True
+        elif opt in ("-r","--run-times"):
+            run_times = int(arg)
     try:
-        hist_m
         path_im_ms
         path_im_pan
         path_xml
@@ -64,9 +93,10 @@ def load_params(argv):
         ps_method
         path_im_ps
         is_multi_thread
+        run_times
     except Exception as e:
         usage()
-        print str(e.message())
+        print(str(e))
         exit()
         
 def print_params():
@@ -76,18 +106,19 @@ def print_params():
     global filter_name
     global cutoff_freq
     global ps_method
-    global hist_m
     global path_im_ps
     global is_multi_thread
-    print "MS File Path \t: ", path_im_ms
-    print "PAN File Path \t: ", path_im_ms
-    print "XML File Path \t: ", path_xml
-    print "Filter Name\t: ", filter_name
-    print "Cutoff Freq \t: ", cutoff_freq
-    print "PS Methhod \t: ", ps_method
-    print "Hist. Match \t: ", hist_m
-    print "PS File Path \t: ", path_im_ps
-    print "Multi Thread \t: ", path_im_ps
+    global run_times
+    print '#'*50
+    print ("%-20s : %s") % ("MS File Path", path_im_ms)
+    print ("%-20s : %s") % ("PAN File Path", path_im_ms)
+    print ("%-20s : %s") % ("XML File Path", path_xml)
+    print ("%-20s : %s") % ("Filter Name", filter_name)
+    print ("%-20s : %s") % ("Cutoff Freq", cutoff_freq)
+    print ("%-20s : %s") % ("PS Methhod", ps_method)
+    print ("%-20s : %s") % ("PS File Path", path_im_ps)
+    print ("%-20s : %s") % ("Multi Thread", is_multi_thread)
+    print ("%-20s : %s") % ("Run Times", run_times)
 
 def load_datas_for_pansharpenning(pan_path, ms_path):
     from osgeo import gdal
@@ -142,6 +173,7 @@ def dftuv(m, n):
 
 def ffilters(filter_name, m, n, d0=.125, k=1):
     import numpy as np
+    h = np.empty((m,n))
     u, v = dftuv(m, n)
     d0 = d0 * (max(m,n)/2)
     d = np.sqrt(u**2 + v**2)
@@ -219,36 +251,27 @@ def ps_quality_score(p_method, im_ps, im_ref, xml_file='none', ms_pan_ratio=0.25
         result = (100.0 * ms_pan_ratio * np.sqrt((1.0 / k) * p2))
     return result
 
-def pansharpenning(ps_method, pan, ms1, ms2, ms3, filter_name, cutoff_freq=.125, hist_m=True):
+def pansharpenning(ps_method, pan, ms1, ms2, ms3, filter_name, cutoff_freq=.125):
     import numpy as np
     if ps_method == 'fft':
         m, n = np.shape(pan)
         h_low = ffilters(filter_name, m, n, cutoff_freq, 1)
-        h_high = 1 - h_low
-        if hist_m:
-            f_pan1 = np.fft.fft2(hist_match(pan, ms1))
-            f_pan2 = np.fft.fft2(hist_match(pan, ms2))
-            f_pan3 = np.fft.fft2(hist_match(pan, ms3))
-            g_pan1 = f_pan1 * h_high
-            g_pan2 = f_pan2 * h_high
-            g_pan3 = f_pan3 * h_high
-        else:
-            f_pan = np.fft.fft2(pan)
-            g_pan = f_pan * h_high
+        h_high = np.ones((m,n)) - h_low
+        f_pan1 = np.fft.fft2(hist_match(pan, ms1))
+        f_pan2 = np.fft.fft2(hist_match(pan, ms2))
+        f_pan3 = np.fft.fft2(hist_match(pan, ms3))
+        g_pan1 = f_pan1 * h_high
+        g_pan2 = f_pan2 * h_high
+        g_pan3 = f_pan3 * h_high
         f_ms1 = np.fft.fft2(ms1)
         f_ms2 = np.fft.fft2(ms2)
         f_ms3 = np.fft.fft2(ms3)
         g_ms1 = f_ms1 * h_low
         g_ms2 = f_ms2 * h_low
         g_ms3 = f_ms3 * h_low
-        if hist_m:
-            f_ps1 = g_pan1 + g_ms1
-            f_ps2 = g_pan2 + g_ms2
-            f_ps3 = g_pan3 + g_ms3
-        else:
-            f_ps1 = g_pan + g_ms1
-            f_ps2 = g_pan + g_ms2
-            f_ps3 = g_pan + g_ms3
+        f_ps1 = g_pan1 + g_ms1
+        f_ps2 = g_pan2 + g_ms2
+        f_ps3 = g_pan3 + g_ms3
         ps1 = np.fft.ifft2(f_ps1)
         ps2 = np.fft.ifft2(f_ps2)
         ps3 = np.fft.ifft2(f_ps3)
@@ -337,7 +360,7 @@ def filter_ms_mt(band, h_low):
     elif band == 3:
         f_ms3 = np.multiply(f_ms3, h_low)
         
-def create_f_ps_im_mt(band, hist_m):
+def create_f_ps_im_mt(band):
     global f_pan
     global f_pan1
     global f_ms1
@@ -348,20 +371,12 @@ def create_f_ps_im_mt(band, hist_m):
     global f_pan3
     global f_ms3
     global f_ps3    
-    if hist_m:
-        if band == 1:
-            f_ps1 = f_pan1 + f_ms1
-        elif band == 2:
-            f_ps2 = f_pan2 + f_ms2
-        elif band == 3:
-            f_ps3 = f_pan3 + f_ms3
-    else:
-        if band == 1:
-            f_ps1 = f_pan + f_ms1
-        elif band ==2:
-            f_ps2 = f_pan + f_ms2
-        elif band == 3:
-            f_ps3 = f_pan + f_ms3
+    if band == 1:
+        f_ps1 = f_pan1 + f_ms1
+    elif band == 2:
+        f_ps2 = f_pan2 + f_ms2
+    elif band == 3:
+        f_ps3 = f_pan3 + f_ms3
             
 def ifft2_mt(band):
     import numpy as np
@@ -386,22 +401,15 @@ def ifft2_mt(band):
 """
 if __name__ == "__main__":
     # Params
-    path_im_ms = './data/spot6/GEBZE/S6_GEBZE_MS.tiff'
-    path_im_pan = './data/spot6/GEBZE/S6_GEBZE_PAN.tiff'
-    path_xml = './data/spot6/GEBZE/S6_GEBZE_MS.XML'
-    filter_name = 'ideal_lpf'
-    path_im_ps = './data/spot6/GEBZE/OUT.tiff'
-    hist_m = True
-    cutoff_freq=.125
-    ps_method = 'fft'
-    is_multi_thread = True
     load_params(sys.argv[1:])
     print_params()
     
     # Load images
+    print '#'*50
+    print 'Compute Performance'
     start = time.time()
     pan, ms1, ms2, ms3 = load_datas_for_pansharpenning(path_im_pan, path_im_ms)
-    print("%20s : %10.4f") % ("Image load time", time.time() - start)
+    print("%-20s : %f") % ("Image load time", time.time() - start)
     m, n = np.shape(pan)
     # Initialize vars
     f_pan1 = np.empty((m,n), dtype='float64')
@@ -418,11 +426,9 @@ if __name__ == "__main__":
     ps3 = np.empty((m,n), dtype='float64')
     
     time_scores = []
-    for i in range(10):
+    for i in range(run_times):
         start = time.time()
-    #    ps1, ps2, ps3 = pansharpenning('fft', pan, ms1, ms2, ms3, 'ideal_low', hist_m=True, cutoff_freq=.125)
         if (ps_method == 'fft' and is_multi_thread):
-            m, n = np.shape(pan)
             h_low = ffilters(filter_name, m, n, cutoff_freq, 1)
             h_high = np.ones((m,n)) - h_low
             # Initialize threads
@@ -447,112 +453,85 @@ if __name__ == "__main__":
             th14 = th.Thread(target=filter_ms_mt, name='th14', args=(2,h_low))
             th15 = th.Thread(target=filter_ms_mt, name='th15', args=(3,h_low))
             # Part 6 - Creating Pan-Sharpenned Image
-            th16 = th.Thread(target=create_f_ps_im_mt, name='th16', args=(1, hist_m))
-            th17 = th.Thread(target=create_f_ps_im_mt, name='th17', args=(2, hist_m))
-            th18 = th.Thread(target=create_f_ps_im_mt, name='th18', args=(3, hist_m))
+            th16 = th.Thread(target=create_f_ps_im_mt, name='th16', args=(1,))
+            th17 = th.Thread(target=create_f_ps_im_mt, name='th17', args=(2,))
+            th18 = th.Thread(target=create_f_ps_im_mt, name='th18', args=(3,))
             # Part7 - I-FFT of PS Image
             th19 = th.Thread(target=ifft2_mt, name='th19', args=(1,))
             th20 = th.Thread(target=ifft2_mt, name='th20', args=(2,))
             th21 = th.Thread(target=ifft2_mt, name='th21', args=(3,))
-            if hist_m:            
-                # Run theareds
-                th1.start()
-                th2.start()
-                th3.start()
-                
-                th1.join()
-                th4.start()
-                
-                th2.join()
-                th5.start()
-                
-                th3.join()
-                th6.start()
-                
-                th4.join()
-                th7.start()
-                th5.join()
-                th8.start()
-                th6.join()
-                th9.start()
-                
-                th10.start()
-                th11.start()
-                th12.start()
-                
-                th10.join()
-                th13.start()
-                th11.join()
-                th14.start()
-                th12.join()
-                th15.start()
-                
-                th7.join()
-                th13.join()
-                th16.start()
-                th8.join()
-                th14.join()
-                th17.start()
-                th9.join()
-                th15.join()
-                th18.start()
-                
-                th16.join()
-                th19.start()
-                th17.join()
-                th20.start()
-                th18.join()
-                th21.start()
-                            
-                th19.join()
-                th20.join()
-                th21.join()
-            else:
-                # before run Threads 14-15-16
-                f_pan = np.fft.fft2(pan)
-                f_pan = f_pan * h_high
-                # Run threads
-                th10.start()
-                th11.start()
-                th12.start()
-                
-                th10.join()
-                th13.start()
-                th11.join()
-                th14.start()
-                th12.join()
-                th15.start()
-                
-                th13.join()
-                th16.start()
-                th14.join()
-                th17.start()
-                th15.join()
-                th18.start()
-                
-                th16.join()
-                th19.start()
-                th17.join()
-                th20.start()
-                th18.join()
-                th21.start()
-                
-                th19.join()
-                th20.join()
-                th21.join()
+            # Run Part 1 - Histogram matching
+            th1.start(); th2.start(); th3.start()                
+            # Run Part 2 - FFT PAN
+            th1.join(); th4.start()                
+            th2.join(); th5.start()
+            th3.join(); th6.start()
+            # Run Part 3 - Filtering PAN
+            th4.join(); th7.start()
+            th5.join(); th8.start()
+            th6.join(); th9.start()
+            # Run Part 4 - FFT MS
+            th10.start(); th11.start(); th12.start()
+            # Run Part 5 - Filtering MS
+            th10.join(); th13.start()
+            th11.join(); th14.start()
+            th12.join(); th15.start()
+            # Run Part 6 - Creating Pan-Sharpenned Image
+            th7.join(); th13.join(); th16.start()
+            th8.join(); th14.join(); th17.start()
+            th9.join(); th15.join(); th18.start()
+            # Run Part7 - I-FFT of PS Image
+            th16.join(); th19.start()
+            th17.join(); th20.start()
+            th18.join(); th21.start()
+            # Wait till all threads are done
+            th19.join(); th20.join(); th21.join()
+        elif (ps_method == 'fft' and (not is_multi_thread)):
+            ps1, ps2, ps3 = pansharpenning('fft', pan, ms1, ms2, ms3, 
+                                           filter_name='ideal_lpf', 
+                                           cutoff_freq=.125)
+        elif (ps_method == 'ihs' and (is_multi_thread)):
+            pass
+        elif (ps_method == 'ihs' and (not is_multi_thread)):
+            pass
+        elif (ps_method == 'ihs_fft' and (is_multi_thread)):
+            pass
+        elif (ps_method == 'ihs_fft' and (not is_multi_thread)):
+            pass
+        elif (ps_method == 'lab' and (is_multi_thread)):
+            pass
+        elif (ps_method == 'lab' and (not is_multi_thread)):
+            pass
+        elif (ps_method == 'lab_fft' and (is_multi_thread)):
+            pass
+        elif (ps_method == 'lab_fft' and (not is_multi_thread)):
+            pass
+        elif (ps_method == 'brovey' and (is_multi_thread)):
+            pass
+        elif (ps_method == 'brovey' and (not is_multi_thread)):
+            pass
+        elif (ps_method == 'hfm' and (is_multi_thread)):
+            pass
+        elif (ps_method == 'hfm' and (not is_multi_thread)):
+            pass        
         time_scores.append(time.time() - start)
-    print "## ", str(np.mean(time_scores)), " seconds."
-    elif 
+    print '#'*50
+    print 'Compute Performance'
+    print ("%-20s : %f") % ("Pansharpenning Compute Time ", np.mean(time_scores))
+    
         
     
     # Performance results
+    print '#'*50
+    print "Quality Report"
     im_ps = np.empty((m,n,3), dtype='float64')
     im_ref = np.empty((m,n,3), dtype='float64')
     im_ps[:,:,0] = ps1; im_ps[:,:,1] = ps2; im_ps[:,:,2] = ps3
     im_ref[:,:,0] = ms1; im_ref[:,:,1] = ms2; im_ref[:,:,2] = ms3
     results = []
     for p_method in ['SAM','RMSE','RASE','ERGAS']:
-        result = ps_quality_score(p_method, im_ps, im_ref, xml_file=path_xml, ms_pan_ratio=0.25)
+        result = ps_quality_score(p_method, im_ps, im_ref, 
+                                  xml_file=path_xml, ms_pan_ratio=0.25)
         results.append({p_method: result})
         print p_method, "\tscores:", str(result)
     
@@ -580,10 +559,10 @@ if __name__ == "__main__":
     
     
     start = time.time()
-    ps11, ps22, ps33 = pansharpenning_mt('fft', pan, ms1, ms2, ms3, 'ideal_low', hist_m=True, cutoff_freq=.125)
+    ps11, ps22, ps33 = pansharpenning_mt('fft', pan, ms1, ms2, ms3, 'ideal_low', cutoff_freq=.125)
     print "## ", str(time.time() - start), " seconds."
     start = time.time()
-    ps1, ps2, ps3 = pansharpenning('fft', pan, ms1, ms2, ms3, 'ideal_low', hist_m=True, cutoff_freq=.125)
+    ps1, ps2, ps3 = pansharpenning('fft', pan, ms1, ms2, ms3, 'ideal_low',  cutoff_freq=.125)
     print "## ", str(time.time() - start), " seconds."
     
     fig, (ax1, ax2) = plt.subplots(ncols=2)
