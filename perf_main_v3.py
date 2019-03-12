@@ -19,8 +19,8 @@ path_xml = './data/spot6/GEBZE/S6_GEBZE_MS.XML'
 filter_name = 'ideal_lpf'
 path_im_ps = './data/spot6/GEBZE/OUT.tiff'
 # hist_m = True
-cutoff_freq=.125
-ps_method = 'ihs_fft'
+cutoff=.125
+ps_method = 'lab'
 is_multi_thread = True
 run_times = 10
 """
@@ -30,7 +30,7 @@ path_xml = ''
 filter_name = ''
 path_im_ps = ''
 # hist_m = True
-cutoff_freq=''
+cutoff=''
 ps_method = ''
 is_multi_thread = False
 run_times = ''
@@ -40,7 +40,7 @@ def load_params(argv):
     global path_im_pan
     global path_xml
     global filter_name
-    global cutoff_freq
+    global cutoff
     global ps_method
     global path_im_ps
     global is_multi_thread
@@ -67,7 +67,6 @@ def load_params(argv):
     for opt, arg in opts:
         if opt in ("-m", "--ms-file"):
             path_im_ms = arg
-            print "path ms: ", arg
         elif opt in ("-p", "--pan-file"):
             path_im_pan = arg
         elif opt in ("-x","--xml-file"):
@@ -75,7 +74,7 @@ def load_params(argv):
         elif opt in ("-f","--filter"):
             filter_name = arg
         elif opt in ("-c","--cutoff-freq"):
-            cutoff_freq = float(arg)
+            cutoff = float(arg)
         elif opt in ("-t","--ps-method"):
             ps_method = arg
         elif opt in ("-o","--out-file"):
@@ -89,7 +88,7 @@ def load_params(argv):
         path_im_pan
         path_xml
         filter_name
-        cutoff_freq
+        cutoff
         ps_method
         path_im_ps
         is_multi_thread
@@ -104,7 +103,7 @@ def print_params():
     global path_im_pan
     global path_xml
     global filter_name
-    global cutoff_freq
+    global cutoff
     global ps_method
     global path_im_ps
     global is_multi_thread
@@ -114,7 +113,7 @@ def print_params():
     print ("%-20s : %s") % ("PAN File Path", path_im_ms)
     print ("%-20s : %s") % ("XML File Path", path_xml)
     print ("%-20s : %s") % ("Filter Name", filter_name)
-    print ("%-20s : %s") % ("Cutoff Freq", cutoff_freq)
+    print ("%-20s : %s") % ("Cutoff Freq", cutoff)
     print ("%-20s : %s") % ("PS Methhod", ps_method)
     print ("%-20s : %s") % ("PS File Path", path_im_ps)
     print ("%-20s : %s") % ("Multi Thread", is_multi_thread)
@@ -253,13 +252,10 @@ def ps_quality_score(p_method, im_ps, im_ref, xml_file='none', ms_pan_ratio=0.25
 
 def rgb_to_lab(ms1, ms2, ms3):
     import numpy as np
-    global f_ms1
-    global f_ms2
-    global f_ms3
     f_ms1 = ms1 / float(2**12 - 1)
     f_ms2 = ms2 / float(2**12 - 1)
     f_ms3 = ms3 / float(2**12 - 1)
-    threshold = 0.008856;
+    t = 0.008856;
     m, n = np.shape(ms1)
     s = m*n
     f_ms1 = f_ms1.reshape((1,s))
@@ -271,25 +267,65 @@ def rgb_to_lab(ms1, ms2, ms3):
                    [0.019334, 0.119193, 0.950227]])
     xyz = np.matmul(cm, np.concatenate((f_ms1, f_ms2, f_ms3), axis=0))
     # Normalize for D65 white points
-    x = xyz[0,:] / 0.950456
-    y = xyz[1,:]
-    z = xyz[2,:] / 1.088754
-    
-    xt = x > threshold
-    yt = y > threshold
-    zt = z > threshold
-    
-    y3 = y**(1.0/3.0); 
-    
-    fx = x[xt]**(1.0/3.0) + ()
+    x = (xyz[0,:] / 0.950456).reshape((1,s))
+    y = (xyz[1,:]).reshape((1,s))
+    z = (xyz[2,:] / 1.088754).reshape((1,s))
+    xt = x > t
+    yt = y > t
+    zt = z > t
+    fx = xt * (x ** (1.0/3.0)) + np.invert(xt) * (7.787 * x + 16.0/116.0)
+    fy = yt * (y ** (1.0/3.0)) + np.invert(yt) * (7.787 * y + 16.0/116.0)
+    fz = zt * (z ** (1.0/3.0)) + np.invert(zt) * (7.787 * z + 16.0/116.0)
+    l = np.reshape(yt * (116 * (y ** (1.0/3.0)) - 16.0) + np.invert(yt) * (903.3 * y), (m,n))
+    a = np.reshape(500 * (fx - fy), (m,n))
+    b = np.reshape(200 * (fy - fz), (m,n))
+    return l, a, b
 
-def pansharpenning(ps_method, pan, ms1, ms2, ms3, filter_name, cutoff_freq=.125):
+def lab_to_rgb(l, a, b):
     import numpy as np
-    
-    m, n = np.shape(pan)
-    h_low = ffilters(filter_name, m, n, cutoff_freq, 1)
-    h_high = np.ones((m,n)) - h_low
+    t1 = 0.008856
+    t2 = 0.206893
+    m, n = np.shape(l)
+    s = m*n
+    l = np.reshape(l, (1,s))
+    a = np.reshape(a, (1,s))
+    b = np.reshape(b, (1,s))
+    # Compute Y
+    fy = ((l + 16.0) / 116.0) ** 3.0
+    yt = fy > t1
+    fy = np.invert(yt) * (l / 903.3) + yt * fy
+    y = fy
+    # Alter fY slightly for further calculations
+    fy = yt * (fy ** (1.0/3.0)) + np.invert(yt) * (7.787 * fy + 16.0/116.0)
+    # Compute X
+    fx = a / 500.0 + fy
+    xt = fx > t2
+    x = (xt * (fx ** 3.0) + np.invert(xt) * ((fx - 16.0/116.0) / 7.787))
+    # Compute Z
+    fz = fy - b / 200.0
+    zt = fz > t2
+    z = (zt * (fz ** 3.0) + np.invert(zt) * ((fz - 16.0/116.0) / 7.787))
+    # Normalize for D65 white point
+    x = x * 0.950456
+    z = z * 1.088754
+    # XYZ to RGB
+    cm = np.array([[ 3.240479, -1.537150, -0.498535],
+       [-0.969256, 1.875992, 0.041556],
+        [0.055648, -0.204043, 1.057311]])
+    rgb = np.matmul(cm, np.concatenate((x, y, z), axis=0))
+    rgb[rgb > 1] = 1
+    rgb[rgb < 0] = 0
+    ps1 = np.reshape(rgb[0,:], (m,n))
+    ps2 = np.reshape(rgb[1,:], (m,n))
+    ps3 = np.reshape(rgb[2,:], (m,n))
+    return ps1, ps2, ps3
+  
+def pansharpenning(ps_method, pan, ms1, ms2, ms3, filter_name, cutoff_freq=.125):
+    import numpy as np    
     if ps_method == 'fft':
+        m, n = np.shape(pan)
+        h_low = ffilters(filter_name, m, n, cutoff_freq, 1)
+        h_high = np.ones((m,n)) - h_low
         f_pan1 = np.fft.fft2(hist_match(pan, ms1))
         f_pan2 = np.fft.fft2(hist_match(pan, ms2))
         f_pan3 = np.fft.fft2(hist_match(pan, ms3))
@@ -319,6 +355,9 @@ def pansharpenning(ps_method, pan, ms1, ms2, ms3, filter_name, cutoff_freq=.125)
         ps3 = (f_pan + ms3 - ihs)
         return ps1, ps2, ps3
     elif ps_method == 'ihs_fft':
+        m, n = np.shape(pan)
+        h_low = ffilters(filter_name, m, n, cutoff_freq, 1)
+        h_high = np.ones((m,n)) - h_low
         ihs = np.multiply((1.0/3.0), (ms1 + ms2 + ms3))
         f_pan = np.fft.fft2(hist_match(pan, ihs))
         g_pan = f_pan * h_high
@@ -336,7 +375,12 @@ def pansharpenning(ps_method, pan, ms1, ms2, ms3, filter_name, cutoff_freq=.125)
         ps3 = np.fft.ifft2(f_ps3)
         return ps1, ps2, ps3
     elif ps_method == 'lab':
-        
+        # CIE Lab transform
+        l, a, b = rgb_to_lab(ms1, ms2, ms3)
+        # PAN hist matching
+        f_pan = hist_match(pan, l)
+        ps1, ps2, ps3 = lab_to_rgb(f_pan, a, b)
+        return ps1, ps2, ps3
     elif ps_method == 'lab_fft':
         pass
     elif ps_method == 'brovey':
@@ -478,10 +522,143 @@ def inverse_ihs_mt(band, ihs):
         ps2 = (f_pan + ms2 - ihs)
     elif band == 3:
         ps3 = (f_pan + ms3 - ihs)
+
+def ms_normalization_mt(band,s):
+    import numpy as np
+    global ms1
+    global ms2
+    global ms3
+    global f_ms1
+    global f_ms2
+    global f_ms3
+    if band == 1:
+        f_ms1 = ms1 / float(2**12 - 1)
+        f_ms1 = np.reshape(f_ms1, (1,s))
+    elif band == 2:
+        f_ms2 = ms2 / float(2**12 - 1)
+        f_ms2 = np.reshape(f_ms2, (1,s))
+    elif band == 3:
+        f_ms3 = ms3 / float(2**12 - 1)
+        f_ms3 = np.reshape(f_ms3, (1,s))
+
+def xyz_normalization_mt(band,s):
+    import numpy as np
+    global fx
+    global fy
+    global fz
+    global xyz
+    global l
+    t = 0.008856;
+    if band == 'x':
+        x = np.reshape(xyz[0,:] / 0.950456, (1,s))
+        xt = x > t
+        fx = xt * (x ** (1.0/3.0)) + np.invert(xt) * (7.787 * x + 16.0/116.0)
+    elif band == 'y':
+        y = np.reshape(xyz[1,:], (1,s))
+        yt = y > t
+        fy = yt * (y ** (1.0/3.0)) + np.invert(yt) * (7.787 * y + 16.0/116.0)
+        l = np.reshape(yt * (116 * (y ** (1.0/3.0)) - 16.0) + np.invert(yt) * (903.3 * y), (m,n))
+    elif band == 'z':
+        z = np.reshape(xyz[2,:] / 1.088754, (1,s))
+        zt = z > t
+        fz = zt * (z ** (1.0/3.0)) + np.invert(zt) * (7.787 * z + 16.0/116.0)
        
+def rgb_to_lab_mt():
+    import numpy as np
+    import threading as th
+    global f_ms1
+    global f_ms2
+    global f_ms3
+    global fx
+    global fy
+    global fz
+    global l
+    global xyz
+    m, n = np.shape(ms1)
+    s = m*n
+    # part 1
+    th1 = th.Thread(target=ms_normalization_mt, name='th1', args=(1,s))
+    th2 = th.Thread(target=ms_normalization_mt, name='th2', args=(2,s))
+    th3 = th.Thread(target=ms_normalization_mt, name='th3', args=(3,s))
+    # Normalize for D65 white points
+    th4 = th.Thread(target=xyz_normalization_mt, name='th4', args=('x',s))
+    th5 = th.Thread(target=xyz_normalization_mt, name='th5', args=('y',s))
+    th6 = th.Thread(target=xyz_normalization_mt, name='th6', args=('z',s))
+    # run part 1
+    th1.start(); th2.start(); th3.start()
+    # RGB to XYZ
+    cm = np.array([[0.412453, 0.357580, 0.180423],
+                   [0.412453, 0.357580, 0.180423],
+                   [0.019334, 0.119193, 0.950227]])
+    th1.join(); th2.join(); th3.join()
+    xyz = np.matmul(cm, np.concatenate((f_ms1, f_ms2, f_ms3), axis=0))
+    # run part 2
+    th4.start(); th5.start(); th6.start()
+    # Normalize for D65 white points
+    th4.join(); th5.join(); th6.join()
+    a = np.reshape((500 * (fx - fy)), (m,n))
+    b = np.reshape((200 * (fy - fz)), (m,n))
+    return a, b
 
+def lab_to_xyz_mt(band,s):
+    import numpy as np
+    global f_pan
+    t1 = 0.008856
+    t2 = 0.206893
+    global fy
+    global a
+    global b
+    global x
+    global y
+    global z
+    if band == 'y':
+        fy = ((f_pan + 16.0) / 116.0) ** 3.0
+        yt = fy > t1
+        fy = np.invert(yt) * (f_pan / 903.3) + yt * fy
+        y = fy
+        fy = yt * (fy ** (1.0/3.0)) + np.invert(yt) * (7.787 * fy + 16.0/116.0)
+    elif band == 'x':
+        fx = a / 500.0 + fy
+        xt = fx > t2
+        x = (xt * (fx ** 3.0) + np.invert(xt) * ((fx - 16.0/116.0) / 7.787))
+        x = x * 0.950456
+    elif band == 'z':
+        fz = fy - b / 200.0
+        zt = fz > t2
+        z = (zt * (fz ** 3.0) + np.invert(zt) * ((fz - 16.0/116.0) / 7.787))
+        z = z * 1.088754
 
-
+def lab_to_rgb_mt(m,n):
+    import numpy as np
+    import threading as th
+    global f_pan
+    global a
+    global b
+    global x
+    global y
+    global z
+    s = m*n
+    f_pan = np.reshape(f_pan, (1,s))
+    a = np.reshape(a, (1,s))
+    b = np.reshape(b, (1,s))
+    th1 = th.Thread(target=lab_to_xyz_mt, name='th1', args=('y', s))
+    th2 = th.Thread(target=lab_to_xyz_mt, name='th2', args=('x', s))
+    th3 = th.Thread(target=lab_to_xyz_mt, name='th3', args=('z', s))
+    th1.start()
+    th1.join()
+    th2.start(); th3.start()
+    # XYZ to RGB
+    cm = np.array([[ 3.240479, -1.537150, -0.498535],
+       [-0.969256, 1.875992, 0.041556],
+        [0.055648, -0.204043, 1.057311]])
+    th2.join(); th3.join()
+    rgb = np.matmul(cm, np.concatenate((x, y, z), axis=0))
+    rgb[rgb > 1] = 1
+    rgb[rgb < 0] = 0
+    ps1 = np.reshape(rgb[0,:], (m,n))
+    ps2 = np.reshape(rgb[1,:], (m,n))
+    ps3 = np.reshape(rgb[2,:], (m,n))
+    return ps1, ps2, ps3
 
 
 
@@ -520,10 +697,9 @@ if __name__ == "__main__":
         time_scores = []
         for i in range(run_times):
             start = time.time()
-            h_low = ffilters(filter_name, m, n, cutoff_freq, 1)
-            h_high = np.ones((m,n)) - h_low
-    
             if (ps_method == 'fft' and is_multi_thread):
+                h_low = ffilters(filter_name, m, n, cutoff, 1)
+                h_high = np.ones((m,n)) - h_low
                 # Initialize threads
                 # Part 1 - Histogram matching
                 th1 = th.Thread(target=hist_match_mt, name='th1', args=(1,))
@@ -590,6 +766,8 @@ if __name__ == "__main__":
                 th1.start(); th2.start(); th3.start()
                 th1.join(); th2.join(); th3.join()
             elif (ps_method == 'ihs_fft' and (is_multi_thread)):
+                h_low = ffilters(filter_name, m, n, cutoff, 1)
+                h_high = np.ones((m,n)) - h_low
                 # IHS Transform
                 ihs = np.multiply((1.0/3.0), (ms1 + ms2 + ms3))
                 # Part 1&2 - Histogram matching & FFT PAN
@@ -629,7 +807,20 @@ if __name__ == "__main__":
                 # Wait till all threads are done
                 th10.join(); th11.join(); th12.join()
             elif (ps_method == 'lab' and (is_multi_thread)):
-                pass
+                m, n = np.shape(pan)
+                xyz = np.empty((3,m*n), dtype='float64')
+                x = np.empty((1,m*n), dtype='float64')
+                y = np.empty((1,m*n), dtype='float64')
+                z = np.empty((1,m*n), dtype='float64')
+                fx = np.empty((1,m*n), dtype='float64')
+                fy = np.empty((1,m*n), dtype='float64')
+                fz = np.empty((1,m*n), dtype='float64')
+                l = np.empty((m,n), dtype='float64')
+                # CIE Lab transform
+                a, b = rgb_to_lab_mt()
+                # PAN hist matching
+                f_pan = hist_match(pan, l)
+                ps1, ps2, ps3 = lab_to_rgb_mt(m, n)
             elif (ps_method == 'lab_fft' and (is_multi_thread)):
                 pass
             elif (ps_method == 'brovey' and (is_multi_thread)):
@@ -639,7 +830,7 @@ if __name__ == "__main__":
             elif (not is_multi_thread):
                 ps1, ps2, ps3 = pansharpenning(ps_method, pan, ms1, ms2, ms3, 
                                             filter_name='ideal_lpf', 
-                                            cutoff_freq=.125)
+                                            cutoff_freq=cutoff)
             time_scores.append(time.time() - start)
     except Exception as e:
         print(str(e))
