@@ -195,8 +195,6 @@ def ffilters(filter_name, m, n, d0=.125, k=1):
 
 def hist_match(im, im_ref):
     import numpy as np
-    m, n = np.shape(im)
-    m_ref, n_ref = np.shape(im_ref)
     im_mean = np.mean(im)
     im_ref_mean = np.mean(im_ref)
     im_std = np.std(im)
@@ -382,7 +380,21 @@ def pansharpenning(ps_method, pan, ms1, ms2, ms3, filter_name, cutoff_freq=.125)
         ps1, ps2, ps3 = lab_to_rgb(f_pan, a, b)
         return ps1, ps2, ps3
     elif ps_method == 'lab_fft':
-        pass
+        m, n = np.shape(pan)
+        h_low = ffilters(filter_name, m, n, cutoff_freq, 1)
+        h_high = np.ones((m,n)) - h_low
+        # CIE Lab transform
+        l, a, b = rgb_to_lab(ms1, ms2, ms3)
+        # PAN hist matching
+        f_pan = hist_match(pan, l)
+        f_pan = np.fft.fft2(f_pan)
+        f_pan = f_pan * h_high
+        f_ms1 = np.fft.fft2(l)
+        f_ms1 = f_ms1 * h_low
+        f_ps1 = f_pan + f_ms1
+        f_ps1 = np.fft.ifft2(f_ps1)
+        ps1, ps2, ps3 = lab_to_rgb(f_ps1, a, b)
+        return ps1, ps2, ps3
     elif ps_method == 'brovey':
         pass
     elif ps_method == 'hfm':
@@ -660,7 +672,20 @@ def lab_to_rgb_mt(m,n):
     ps3 = np.reshape(rgb[2,:], (m,n))
     return ps1, ps2, ps3
 
+def lab_fft_p1(pan):
+    import numpy as np
+    global f_pan
+    global l
+    f_pan = hist_match(pan, l)
+    f_pan = np.fft.fft2(f_pan)
+    f_pan = f_pan * h_high
 
+def lab_fft_p2(h_low):
+    import numpy as np
+    global l
+    global f_ms1
+    f_ms1 = np.fft.fft2(l)
+    f_ms1 = f_ms1 * h_low
 
 """
 ##############################################################################
@@ -807,7 +832,6 @@ if __name__ == "__main__":
                 # Wait till all threads are done
                 th10.join(); th11.join(); th12.join()
             elif (ps_method == 'lab' and (is_multi_thread)):
-                m, n = np.shape(pan)
                 xyz = np.empty((3,m*n), dtype='float64')
                 x = np.empty((1,m*n), dtype='float64')
                 y = np.empty((1,m*n), dtype='float64')
@@ -822,7 +846,27 @@ if __name__ == "__main__":
                 f_pan = hist_match(pan, l)
                 ps1, ps2, ps3 = lab_to_rgb_mt(m, n)
             elif (ps_method == 'lab_fft' and (is_multi_thread)):
-                pass
+                h_low = ffilters(filter_name, m, n, cutoff, 1)
+                h_high = np.ones((m,n)) - h_low
+                xyz = np.empty((3,m*n), dtype='float64')
+                x = np.empty((1,m*n), dtype='float64')
+                y = np.empty((1,m*n), dtype='float64')
+                z = np.empty((1,m*n), dtype='float64')
+                fx = np.empty((1,m*n), dtype='float64')
+                fy = np.empty((1,m*n), dtype='float64')
+                fz = np.empty((1,m*n), dtype='float64')
+                l = np.empty((m,n), dtype='float64')
+                # CIE Lab transform
+                a, b = rgb_to_lab_mt()
+                # PAN hist matching & f_pan
+                th1 = th.Thread(target=lab_fft_p1, name='th1', args=(pan,))
+                # f_ms1
+                th2 = th.Thread(target=lab_fft_p2, name='th2', args=(h_low,))
+                th1.start(); th2.start()
+                th1.join(); th2.join()
+                f_pan = f_pan + f_ms1
+                f_pan = np.fft.ifft2(f_pan)
+                ps1, ps2, ps3 = lab_to_rgb_mt(m, n)
             elif (ps_method == 'brovey' and (is_multi_thread)):
                 pass
             elif (ps_method == 'hfm' and (is_multi_thread)):
