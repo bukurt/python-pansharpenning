@@ -396,9 +396,36 @@ def pansharpenning(ps_method, pan, ms1, ms2, ms3, filter_name, cutoff_freq=.125)
         ps1, ps2, ps3 = lab_to_rgb(f_ps1, a, b)
         return ps1, ps2, ps3
     elif ps_method == 'brovey':
-        pass
+        # brovey transform
+        im_br = (1.0/3.0) * (ms1 + ms2 + ms3)
+        # histogram matching
+        f_pan =  hist_match(pan, im_br)
+        f_pan = f_pan / im_br
+        # pansharpenning
+        ps1 = ms1 * f_pan
+        ps2 = ms2 * f_pan
+        ps3 = ms3 * f_pan
+        return ps1, ps2, ps3
     elif ps_method == 'hfm':
-        pass
+        m, n = np.shape(pan)
+        h_low = ffilters(filter_name, m, n, cutoff_freq, 1)
+        # Histogram matching
+        f_pan1 = hist_match(pan, ms1)
+        f_pan2 = hist_match(pan, ms2)
+        f_pan3 = hist_match(pan, ms3)
+        f_pan1 = np.fft.fft2(f_pan1)
+        f_pan2 = np.fft.fft2(f_pan2)
+        f_pan3 = np.fft.fft2(f_pan3)
+        f_pan1 = f_pan1 * h_low
+        f_pan2 = f_pan2 * h_low
+        f_pan3 = f_pan3 * h_low
+        f_pan1 = np.fft.ifft2(f_pan1)
+        f_pan2 = np.fft.ifft2(f_pan2)
+        f_pan3 = np.fft.ifft2(f_pan3)
+        ps1 = ms1 * pan / f_pan1
+        ps2 = ms2 * pan / f_pan2
+        ps3 = ms3 * pan / f_pan3
+        return ps1, ps2, ps3
 
 ############################################################################### 
 # Multi-theaded functions
@@ -457,17 +484,17 @@ def fft2_ms_mt(band):
         f_ms3 = np.fft.fft2(ms3)
 
 
-def filter_pan_mt(band, h_high):
+def filter_pan_mt(band, h):
     import numpy as np
     global f_pan1
     global f_pan2
     global f_pan3
     if band == 1:
-        f_pan1 = np.multiply(f_pan1, h_high)
+        f_pan1 = np.multiply(f_pan1, h)
     elif band == 2:
-        f_pan2 = np.multiply(f_pan2, h_high)
+        f_pan2 = np.multiply(f_pan2, h)
     elif band == 3:
-        f_pan3 = np.multiply(f_pan3, h_high)
+        f_pan3 = np.multiply(f_pan3, h)
 
 def filter_ms_mt(band, h_low):
     import numpy as np
@@ -519,6 +546,18 @@ def ifft2_mt(band):
         ps2 = np.fft.ifft2(f_ps2)
     elif band == 3:
         ps3 = np.fft.ifft2(f_ps3)
+
+def ifft2_pan_mt(band):
+    import numpy as np
+    global f_pan1
+    global f_pan2
+    global f_pan3
+    if band == 1:
+        f_pan1 = np.fft.ifft2(f_pan1)
+    elif band == 2:
+        f_pan2 = np.fft.ifft2(f_pan2)
+    elif band == 3:
+        f_pan3 = np.fft.ifft2(f_pan3)
     
 def inverse_ihs_mt(band, ihs):
     global f_pan
@@ -686,6 +725,39 @@ def lab_fft_p2(h_low):
     global f_ms1
     f_ms1 = np.fft.fft2(l)
     f_ms1 = f_ms1 * h_low
+
+def brovey_calc_ps(band):
+    global f_pan
+    global ms1
+    global ms2
+    global ms3
+    global ps1
+    global ps2
+    global ps3
+    if band == 1:
+        ps1 = ms1 * f_pan
+    elif band == 2:
+        ps2 = ms2 * f_pan
+    elif band == 3:
+        ps3 = ms3 * f_pan
+        
+def hfm_calc_ps(band):
+    global pan
+    global f_pan1
+    global f_pan2
+    global f_pan3
+    global ms1
+    global ms2
+    global ms3
+    global ps1
+    global ps2
+    global ps3
+    if band == 1:
+        ps1 = ms1 * pan / f_pan1
+    elif band == 2:
+        ps2 = ms2 * pan / f_pan2
+    elif band == 3:
+        ps3 = ms3 * pan / f_pan3
 
 """
 ##############################################################################
@@ -868,9 +940,60 @@ if __name__ == "__main__":
                 f_pan = np.fft.ifft2(f_pan)
                 ps1, ps2, ps3 = lab_to_rgb_mt(m, n)
             elif (ps_method == 'brovey' and (is_multi_thread)):
-                pass
+                # brovey transform
+                im_br = (1.0/3.0) * (ms1 + ms2 + ms3)
+                # histogram matching
+                f_pan =  hist_match(pan, im_br)
+                f_pan = f_pan / im_br
+                # pansharpenning
+                th1 = th.Thread(target=brovey_calc_ps, name='th1', args=(1,))
+                th2 = th.Thread(target=brovey_calc_ps, name='th2', args=(2,))
+                th3 = th.Thread(target=brovey_calc_ps, name='th3', args=(3,))
+                th1.start(); th2.start(); th3.start()
+                th1.join(); th2.join(); th3.join()                
             elif (ps_method == 'hfm' and (is_multi_thread)):
-                pass
+                m, n = np.shape(pan)
+                h_low = ffilters(filter_name, m, n, cutoff, 1)
+                # Part 1 - Histogram matching
+                th1 = th.Thread(target=hist_match_mt, name='th1', args=(1,))
+                th2 = th.Thread(target=hist_match_mt, name='th2', args=(2,))
+                th3 = th.Thread(target=hist_match_mt, name='th3', args=(3,))
+                # Part 2 - FFT PAN
+                th4 = th.Thread(target=fft2_pan_mt, name='th4', args=(1,))
+                th5 = th.Thread(target=fft2_pan_mt, name='th5', args=(2,))
+                th6 = th.Thread(target=fft2_pan_mt, name='th6', args=(3,))
+                # Part 3 - Filtering PAN
+                th7 = th.Thread(target=filter_pan_mt, name='th7', args=(1,h_low))
+                th8 = th.Thread(target=filter_pan_mt, name='th8', args=(2,h_low))
+                th9 = th.Thread(target=filter_pan_mt, name='th9', args=(3,h_low))
+                # Part 4 - I-FFT PAN
+                th10 = th.Thread(target=ifft2_pan_mt, name='th10', args=(1,))
+                th11 = th.Thread(target=ifft2_pan_mt, name='th11', args=(2,))
+                th12 = th.Thread(target=ifft2_pan_mt, name='th12', args=(3,))
+                # Part 5 - HFM
+                th13 = th.Thread(target=hfm_calc_ps, name='th13', args=(1,))
+                th14 = th.Thread(target=hfm_calc_ps, name='th14', args=(2,))
+                th15 = th.Thread(target=hfm_calc_ps, name='th15', args=(3,))
+                # run Part 1
+                th1.start(); th2.start(); th3.start()
+                # run Part 2
+                th1.join(); th4.start()
+                th2.join(); th5.start()
+                th3.join(); th6.start()
+                # run Part 3
+                th4.join(); th7.start()
+                th5.join(); th8.start()
+                th6.join(); th9.start()
+                # run Part 4
+                th7.join(); th10.start()
+                th8.join(); th11.start()
+                th9.join(); th12.start()
+                # run Part 5
+                th10.join(); th13.start()
+                th11.join(); th14.start()
+                th12.join(); th15.start()
+                # wait all threads done
+                th13.join(); th14.join(); th15.join()
             elif (not is_multi_thread):
                 ps1, ps2, ps3 = pansharpenning(ps_method, pan, ms1, ms2, ms3, 
                                             filter_name='ideal_lpf', 
