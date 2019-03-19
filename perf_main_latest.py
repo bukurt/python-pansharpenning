@@ -20,9 +20,10 @@ filter_name = 'ideal_lpf'
 path_im_ps = './data/spot6/GEBZE/OUT.tiff'
 # hist_m = True
 cutoff=.125
-ps_method = 'lab'
+ps_method = 'ihs_fft'
 is_multi_thread = True
 run_times = 10
+stat_file = 'pansharpenning_stats.csv'
 """
 path_im_ms = ''
 path_im_pan = ''
@@ -34,6 +35,7 @@ cutoff=''
 ps_method = ''
 is_multi_thread = False
 run_times = ''
+stat_file = ''
 
 def load_params(argv):
     global path_im_ms
@@ -45,6 +47,7 @@ def load_params(argv):
     global path_im_ps
     global is_multi_thread
     global run_times
+    global stat_file
     def usage():
         msg = """test.py     --ms-file= <MS File Path> 
                     --pan-file= <PAN File Path> 
@@ -56,10 +59,10 @@ def load_params(argv):
                     --multi-thread"""
         print msg
     try:
-        opts, args = getopt.getopt(argv,"m:p:x:f:c:t:o:a:r:",
+        opts, args = getopt.getopt(argv,"m:p:x:f:c:t:o:a:r:s:",
         ["ms-file=","pan-file=","xml-file=","filter=",
         "cutoff-freq=","ps-method=","out-file=","multi-thread",
-        "run-times="])
+        "run-times=","stat-file="])
     except Exception as e:
         usage()
         print(str(e))
@@ -83,6 +86,8 @@ def load_params(argv):
             is_multi_thread = True
         elif opt in ("-r","--run-times"):
             run_times = int(arg)
+        elif opt in ("-s","--stat-file"):
+            stat_file = arg
     try:
         path_im_ms
         path_im_pan
@@ -93,6 +98,7 @@ def load_params(argv):
         path_im_ps
         is_multi_thread
         run_times
+        stat_file
     except Exception as e:
         usage()
         print(str(e))
@@ -108,10 +114,12 @@ def print_params():
     global path_im_ps
     global is_multi_thread
     global run_times
+    global stat_file
     print '#'*50
     print ("%-20s : %s") % ("MS File Path", path_im_ms)
     print ("%-20s : %s") % ("PAN File Path", path_im_ms)
     print ("%-20s : %s") % ("XML File Path", path_xml)
+    print ("%-20s : %s") % ("Stat File Path", stat_file)
     print ("%-20s : %s") % ("Filter Name", filter_name)
     print ("%-20s : %s") % ("Cutoff Freq", cutoff)
     print ("%-20s : %s") % ("PS Methhod", ps_method)
@@ -148,7 +156,7 @@ def write_ps_to_disk(path_im_ps, ps1, ps2, ps3):
     import numpy as np
     m, n = np.shape(ps1)
     driver = gdal.GetDriverByName('Gtiff')
-    dataset = driver.Create(path_im_ps, m, n, 3, gdal.GDT_Float32)
+    dataset = driver.Create(path_im_ps, m, n, 3, gdal.GDT_Float64)
     dataset.GetRasterBand(1).WriteArray(ps1)
     dataset.GetRasterBand(2).WriteArray(ps2)
     dataset.GetRasterBand(3).WriteArray(ps3)
@@ -160,6 +168,20 @@ def write_ps_to_disk(path_im_ps, ps1, ps2, ps3):
     a2 = ds.GetRasterBand(2).ReadAsArray()
     a3 = ds.GetRasterBand(3).ReadAsArray() 
 """
+def write_statistics_to_csv(stat_file, row):
+    import csv
+    csv.register_dialect('myDialect',
+                         quoting=csv.QUOTE_ALL,
+                         skipinitialspace=True)
+    try:
+        with open(stat_file, 'a') as csvFile:
+            writer = csv.writer(csvFile, dialect='myDialect')
+            writer.writerow(row)
+        csvFile.close()
+        return 0
+    except Exception as e:
+        print str(e)
+        return 1
 
 def dftuv(m, n):
     import numpy as np
@@ -768,7 +790,9 @@ if __name__ == "__main__":
     # Params
     load_params(sys.argv[1:])
     print_params()
-    
+    if ps_method in ('ihs', 'lab', 'brovey'):
+        filter_name = 'None'
+        cutoff = 'None'
     # Load images
     print '#'*50
     print 'Compute Performance'
@@ -1021,9 +1045,22 @@ if __name__ == "__main__":
         results.append({p_method: result})
         print p_method, "\tscores:", str(result)
     
-    
-
-    
+    # Write stats to file
+    """
+    fields = ['#TIMESTAMP','#MULTI_THREAD','#COMPUTE_TIME','#IM_X','#IM_Y','#PS_METHOD',
+              '#FOURIER_FILTER','#CUTOFF_FREQ','#SAM_B1','#SAM_B2','#SAM_B3','#RMSE_B1',
+              '#RMSE_B2','#RMSE_B3','#RASE','#ERGAS','#INPUT_MS','#OUT_FILE']
+    """
+    row = [str(int(time.time())), str(is_multi_thread), str(np.mean(time_scores)),
+           str(m), str(n), ps_method, filter_name, str(cutoff), 
+           str(results[0]['SAM'][0]), str(results[0]['SAM'][1]), str(results[0]['SAM'][2]),
+           str(results[1]['RMSE'][0]), str(results[1]['RMSE'][1]), str(results[1]['RMSE'][2]),
+           str(results[2]['RASE']), str(results[3]['ERGAS']), 
+           path_im_ms, path_im_ps
+           ]
+    write_statistics_to_csv(stat_file, row)
+    # Write ps im to disk
+    write_ps_to_disk(path_im_ps, np.abs(ps1), np.abs(ps2), np.abs(ps3))
     # Print
     """
     fig, (ax1, ax2) = plt.subplots(ncols=2)
@@ -1043,8 +1080,8 @@ if __name__ == "__main__":
     ax2.imshow(ps3.astype('float32'),cmap=plt.cm.Blues)
     
     fig, (ax1, ax2, ax3) = plt.subplots(ncols=3)
-    ax1.imshow(np.abs(ps1).astype('float64'),cmap=plt.cm.Reds)
-    ax2.imshow(np.abs(ps2).astype('float64'),cmap=plt.cm.Greens)
-    ax3.imshow(np.abs(ps3).astype('float64'),cmap=plt.cm.Blues)
+    ax1.imshow(np.abs(psn11).astype('float64'),cmap=plt.cm.Reds)
+    ax2.imshow(np.abs(psn22).astype('float64'),cmap=plt.cm.Greens)
+    ax3.imshow(np.abs(psn33).astype('float64'),cmap=plt.cm.Blues)
 
     """

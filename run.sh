@@ -7,7 +7,7 @@ if [ $# -lt 1 ];then
 fi
 
 if [ "$2" == "--multi-thread" ];then
-/usr/bin/python perf_main_v3.py \
+/usr/bin/python perf_main_latest.py \
 	--ms-file data/spot6/GEBZE/S6_GEBZE_MS.tiff \
 	--pan-file data/spot6/GEBZE/S6_GEBZE_PAN.tiff \
 	--xml-file data/spot6/GEBZE/S6_GEBZE_MS.XML \
@@ -15,10 +15,11 @@ if [ "$2" == "--multi-thread" ];then
 	--cutoff-freq 0.125 \
 	--ps-method $PS_METHOD \
 	--out-file data/spot6/GEBZE/out.tiff \
+	--stat-file pansharpenning_stats.csv \
 	--run-times 10 \
 	--multi-thread
 else
-/usr/bin/python perf_main_v3.py \
+/usr/bin/python perf_main_latest.py \
         --ms-file data/spot6/GEBZE/S6_GEBZE_MS.tiff \
         --pan-file data/spot6/GEBZE/S6_GEBZE_PAN.tiff \
         --xml-file data/spot6/GEBZE/S6_GEBZE_MS.XML \
@@ -26,6 +27,7 @@ else
         --cutoff-freq 0.125 \
         --ps-method $PS_METHOD \
         --out-file data/spot6/GEBZE/out.tiff \
+	--stat-file pansharpenning_stats.csv \
         --run-times 10 
 fi
 
