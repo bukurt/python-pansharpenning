@@ -20,7 +20,7 @@ declare -a DATAS=(
 "data/spot6/IST_ORMAN2/S6_IST_ORMAN2_MS.tiff" "data/spot6/IST_ORMAN2/S6_IST_ORMAN2_PAN.tiff" "data/spot6/IST_ORMAN2/S6_IST_ORMAN2_MS.XML" "data/spot6/IST_ORMAN2/OUT.tiff"
 )
 
-declare -a PS_METHODS=("fft" "ihs" "ihs_fft" "lab" "lab_fft" "brovey,hfm")
+declare -a PS_METHODS=("fft" "ihs" "ihs_fft" "lab" "lab_fft" "brovey" "hfm")
 declare -a FILTERS=("ideal_lpf" "hamming" "hanning" "lbtw" "gauss_low")
 
 data_len=${#DATAS[@]}
