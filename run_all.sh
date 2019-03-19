@@ -24,7 +24,7 @@ declare -a PS_METHODS=("fft" "ihs" "ihs_fft" "lab" "lab_fft" "brovey,hfm")
 declare -a FILTERS=("ideal_lpf" "hamming" "hanning" "lbtw" "gauss_low")
 
 data_len=${#DATAS[@]}
-for (( i=0; i<${data_len}+1; i=i+4 )); do
+for (( i=0; i<${data_len}-4; i=i+4 )); do
   ms=${DATAS[$i]}
   pan=${DATAS[$i+1]}
   xml=${DATAS[$i+2]}
@@ -43,6 +43,7 @@ for (( i=0; i<${data_len}+1; i=i+4 )); do
  	--out-file $out \
  	--stat-file $stat \
  	--run-times 10 \
+     sleep 0.5
      echo -e "\e[93mMulti  Thread-$method-$filter\033[0m"
      /usr/bin/python perf_main_latest.py \
  	--ms-file $ms \
