@@ -11,13 +11,14 @@ from osgeo import gdal
 import time
 import matplotlib.pyplot as plt
 import sys, getopt
+import scipy.misc
 """
 # Default params
 path_im_ms = './data/spot6/GEBZE/S6_GEBZE_MS.tiff'
 path_im_pan = './data/spot6/GEBZE/S6_GEBZE_PAN.tiff'
 path_xml = './data/spot6/GEBZE/S6_GEBZE_MS.XML'
 filter_name = 'ideal_lpf'
-path_im_ps = './data/spot6/GEBZE/OUT.tiff'
+path_im_ps = './data/spot6/GEBZE/'
 # hist_m = True
 cutoff=.125
 ps_method = 'ihs_fft'
@@ -232,7 +233,7 @@ def mean_rad(xml_file):
     g3 = float(root[8][4][0][0][6][5].text)
     return g1, g2, g3
 
-def ps_quality_score(p_method, im_ps, im_ref, xml_file='none', ms_pan_ratio=0.25):
+def ps_quality_score(p_method, im_ps, im_ref, xml_file, ms_pan_ratio=0.25):
     import numpy as np
     m, n, k = np.shape(im_ps)
     if p_method == 'SAM':
@@ -254,10 +255,11 @@ def ps_quality_score(p_method, im_ps, im_ref, xml_file='none', ms_pan_ratio=0.25
         rmse = np.empty((k), dtype='float64')
         for i in range(k):
             p1[i] = np.sum((im_ref[:,:,i] - im_ps[:,:,i]) ** 2.0)
-            rmse[i] = (1.0 / (m*n)) * (np.sqrt(p1[i]))
-        gain = np.array(mean_rad(xml_file))
+            # rmse[i] = (1.0 / (m*n)) * (np.sqrt(p1[i]))
+        rmse = ((1.0 / (m*n)) * (np.sqrt(p1)))
+        gain = np.array(mean_rad(xml_file)).reshape((1,3))
         p2 = np.sum((rmse ** 2.0) / gain)
-        result = (100.0 * np.sqrt((1.0 / k) * p2))
+        result = 100.0 * (np.sqrt((1.0 / k) * p2))
     elif p_method == 'ERGAS':
         p1 = np.empty((k), dtype='float64')
         p2 = np.empty((k), dtype='float64')
@@ -400,6 +402,9 @@ def pansharpenning(ps_method, pan, ms1, ms2, ms3, filter_name, cutoff_freq=.125)
         # PAN hist matching
         f_pan = hist_match(pan, l)
         ps1, ps2, ps3 = lab_to_rgb(f_pan, a, b)
+        ps1 = ps1 * (2.0 ** 12)
+        ps2 = ps2 * (2.0 ** 12)
+        ps3 = ps3 * (2.0 ** 12)
         return ps1, ps2, ps3
     elif ps_method == 'lab_fft':
         m, n = np.shape(pan)
@@ -416,6 +421,9 @@ def pansharpenning(ps_method, pan, ms1, ms2, ms3, filter_name, cutoff_freq=.125)
         f_ps1 = f_pan + f_ms1
         f_ps1 = np.fft.ifft2(f_ps1)
         ps1, ps2, ps3 = lab_to_rgb(f_ps1, a, b)
+        ps1 = ps1 * (2.0 ** 12)
+        ps2 = ps2 * (2.0 ** 12)
+        ps3 = ps3 * (2.0 ** 12)
         return ps1, ps2, ps3
     elif ps_method == 'brovey':
         # brovey transform
@@ -791,8 +799,8 @@ if __name__ == "__main__":
     load_params(sys.argv[1:])
     print_params()
     if ps_method in ('ihs', 'lab', 'brovey'):
-        filter_name = 'None'
-        cutoff = 'None'
+        filter_name = 'NoFilter'
+        cutoff = 'NoCutoff'
     # Load images
     print '#'*50
     print 'Compute Performance'
@@ -941,6 +949,9 @@ if __name__ == "__main__":
                 # PAN hist matching
                 f_pan = hist_match(pan, l)
                 ps1, ps2, ps3 = lab_to_rgb_mt(m, n)
+                ps1 = ps1 * (2.0 ** 12)
+                ps2 = ps2 * (2.0 ** 12)
+                ps3 = ps3 * (2.0 ** 12)
             elif (ps_method == 'lab_fft' and (is_multi_thread)):
                 h_low = ffilters(filter_name, m, n, cutoff, 1)
                 h_high = np.ones((m,n)) - h_low
@@ -963,6 +974,9 @@ if __name__ == "__main__":
                 f_pan = f_pan + f_ms1
                 f_pan = np.fft.ifft2(f_pan)
                 ps1, ps2, ps3 = lab_to_rgb_mt(m, n)
+                ps1 = ps1 * (2.0 ** 12)
+                ps2 = ps2 * (2.0 ** 12)
+                ps3 = ps3 * (2.0 ** 12)
             elif (ps_method == 'brovey' and (is_multi_thread)):
                 # brovey transform
                 im_br = (1.0/3.0) * (ms1 + ms2 + ms3)
@@ -1060,7 +1074,39 @@ if __name__ == "__main__":
            ]
     write_statistics_to_csv(stat_file, row)
     # Write ps im to disk
-    write_ps_to_disk(path_im_ps, np.abs(ps1), np.abs(ps2), np.abs(ps3))
+    im_code = path_im_ms.split('/')[-1].split('.')[0]
+    im_code = im_code + '-' + ps_method + '-' + filter_name + '-' + str(cutoff)
+    ps_path = path_im_ps + '/' + im_code + '.tiff'
+    write_ps_to_disk(ps_path, np.abs(ps1), np.abs(ps2), np.abs(ps3))
+    
+    # write images to disk
+    im_ref = np.abs(im_ref/(2.0**12))
+    im_ps = np.abs(im_ps/(2.0**12))
+    
+    plt.rcParams.update({'font.size': 8})
+    fig, (ax1, ax2) = plt.subplots(ncols=2)
+    ax1.imshow(im_ref[50:300,50:300,:])
+    ax1.set_xticklabels([])
+    ax1.set_yticklabels([])
+    ax1.tick_params(axis=u'both', which=u'both',length=0)
+    ax2.imshow(im_ps[50:300,50:300,:])
+    ax2.set_xticklabels([])
+    ax2.set_yticklabels([])
+    ax2.tick_params(axis=u'both', which=u'both',length=0)
+    fig_path = path_im_ps + '/' + im_code + '_compared.png'
+    fig.savefig(fig_path , dpi=300)
+    plt.close(fig)
+    
+    # write JPG images to disk
+    im_path = path_im_ps + '/' + im_code + '.jpg'
+    im_path2 = path_im_ps + '/' + im_code + '_sample_area.jpg'
+    im_path3 = path_im_ms.split('.tiff')[0] + '_original.jpg'
+    im_path4 = path_im_ms.split('.tiff')[0] + '_org_sample_area.jpg'
+    scipy.misc.toimage(im_ps, cmin=0.0, cmax=1.0).save(im_path)
+    scipy.misc.toimage(im_ps[50:300,50:300,:], cmin=0.0, cmax=1.0).save(im_path2)
+    scipy.misc.toimage(im_ref, cmin=0.0, cmax=1.0).save(im_path3)
+    scipy.misc.toimage(im_ref[50:300,50:300,:], cmin=0.0, cmax=1.0).save(im_path4)
+    
     # Print
     """
     fig, (ax1, ax2) = plt.subplots(ncols=2)
@@ -1080,8 +1126,8 @@ if __name__ == "__main__":
     ax2.imshow(ps3.astype('float32'),cmap=plt.cm.Blues)
     
     fig, (ax1, ax2, ax3) = plt.subplots(ncols=3)
-    ax1.imshow(np.abs(psn11).astype('float64'),cmap=plt.cm.Reds)
-    ax2.imshow(np.abs(psn22).astype('float64'),cmap=plt.cm.Greens)
-    ax3.imshow(np.abs(psn33).astype('float64'),cmap=plt.cm.Blues)
-
+    ax1.imshow(np.abs(ps1).astype('float64'),cmap=plt.cm.Reds)
+    ax2.imshow(np.abs(ps2).astype('float64'),cmap=plt.cm.Greens)
+    ax3.imshow(np.abs(ps3).astype('float64'),cmap=plt.cm.Blues)
+    
     """

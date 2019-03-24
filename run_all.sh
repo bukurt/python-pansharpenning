@@ -11,13 +11,15 @@
 #xml=$3
 #out=$4
 #stat=$5
-stat='pansharpenning_stats.csv'
+today=`date +%Y%m%d_%H%M%S`
+stat="pansharpenning_stats_"$today".csv"
+echo $stat
 
 declare -a DATAS=(
-"data/spot6/GEBZE/S6_GEBZE_MS.tiff" "data/spot6/GEBZE/S6_GEBZE_PAN.tiff" "data/spot6/GEBZE/S6_GEBZE_MS.XML" "data/spot6/GEBZE/OUT.tiff"
-"data/spot6/IST_ORMAN/S6_IST_ORMAN_MS.tiff" "data/spot6/IST_ORMAN/S6_IST_ORMAN_PAN.tiff" "data/spot6/IST_ORMAN/S6_IST_ORMAN_MS.XML" "data/spot6/IST_ORMAN/OUT.tiff"
+"data/spot6/GEBZE/S6_GEBZE_MS.tiff" "data/spot6/GEBZE/S6_GEBZE_PAN.tiff" "data/spot6/GEBZE/S6_GEBZE_MS.XML" "data/spot6/GEBZE/"
+"data/spot6/IST_ORMAN/S6_IST_ORMAN_MS.tiff" "data/spot6/IST_ORMAN/S6_IST_ORMAN_PAN.tiff" "data/spot6/IST_ORMAN/S6_IST_ORMAN_MS.XML" "data/spot6/IST_ORMAN/"
 "data/spot6/URFA/S6_URFA_MS.tiff" "data/spot6/URFA/S6_URFA_PAN.tiff" "data/spot6/URFA/S6_URFA_MS.XML" "data/spot6/URFA/OUT.tiff"
-"data/spot6/IST_ORMAN2/S6_IST_ORMAN2_MS.tiff" "data/spot6/IST_ORMAN2/S6_IST_ORMAN2_PAN.tiff" "data/spot6/IST_ORMAN2/S6_IST_ORMAN2_MS.XML" "data/spot6/IST_ORMAN2/OUT.tiff"
+"data/spot6/IST_ORMAN2/S6_IST_ORMAN2_MS.tiff" "data/spot6/IST_ORMAN2/S6_IST_ORMAN2_PAN.tiff" "data/spot6/IST_ORMAN2/S6_IST_ORMAN2_MS.XML" "data/spot6/IST_ORMAN2/"
 )
 
 declare -a PS_METHODS=("fft" "ihs" "ihs_fft" "lab" "lab_fft" "brovey" "hfm")

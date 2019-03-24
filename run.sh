@@ -2,6 +2,9 @@
 
 PS_METHOD=$1
 
+today=`date +%Y%m%d_%H%M%S`
+stat="pansharpenning_stats_"$today".csv"
+
 if [ $# -lt 1 ];then
 	echo "Method input is missing."
 fi
@@ -14,8 +17,8 @@ if [ "$2" == "--multi-thread" ];then
 	--filter ideal_lpf \
 	--cutoff-freq 0.125 \
 	--ps-method $PS_METHOD \
-	--out-file data/spot6/GEBZE/out.tiff \
-	--stat-file pansharpenning_stats.csv \
+	--out-file data/spot6/GEBZE/ \
+	--stat-file $stat \
 	--run-times 10 \
 	--multi-thread
 else
@@ -26,8 +29,8 @@ else
         --filter ideal_lpf \
         --cutoff-freq 0.125 \
         --ps-method $PS_METHOD \
-        --out-file data/spot6/GEBZE/out.tiff \
-	--stat-file pansharpenning_stats.csv \
+        --out-file data/spot6/GEBZE/ \
+	--stat-file $stat \
         --run-times 10 
 fi
 
