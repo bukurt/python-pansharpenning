@@ -1083,19 +1083,19 @@ if __name__ == "__main__":
     im_ref = np.abs(im_ref/(2.0**12))
     im_ps = np.abs(im_ps/(2.0**12))
     
-    plt.rcParams.update({'font.size': 8})
-    fig, (ax1, ax2) = plt.subplots(ncols=2)
-    ax1.imshow(im_ref[50:300,50:300,:])
-    ax1.set_xticklabels([])
-    ax1.set_yticklabels([])
-    ax1.tick_params(axis=u'both', which=u'both',length=0)
-    ax2.imshow(im_ps[50:300,50:300,:])
-    ax2.set_xticklabels([])
-    ax2.set_yticklabels([])
-    ax2.tick_params(axis=u'both', which=u'both',length=0)
-    fig_path = path_im_ps + '/' + im_code + '_compared.png'
-    fig.savefig(fig_path , dpi=300)
-    plt.close(fig)
+    # plt.rcParams.update({'font.size': 8})
+    # fig, (ax1, ax2) = plt.subplots(ncols=2)
+    # ax1.imshow(im_ref[50:300,50:300,:])
+    # ax1.set_xticklabels([])
+    # ax1.set_yticklabels([])
+    # ax1.tick_params(axis=u'both', which=u'both',length=0)
+    # ax2.imshow(im_ps[50:300,50:300,:])
+    # ax2.set_xticklabels([])
+    # ax2.set_yticklabels([])
+    # ax2.tick_params(axis=u'both', which=u'both',length=0)
+    # fig_path = path_im_ps + '/' + im_code + '_compared.png'
+    #fig.savefig(fig_path , dpi=300)
+    #plt.close(fig)
     
     # write JPG images to disk
     im_path = path_im_ps + '/' + im_code + '.jpg'
