@@ -382,14 +382,19 @@ def pansharpenning(ps_method, pan, ms1, ms2, ms3, filter_name, cutoff_freq=.125)
         h_high = np.ones((m,n)) - h_low
         ihs = np.multiply((1.0/3.0), (ms1 + ms2 + ms3))
         f_pan = np.fft.fft2(hist_match(pan, ihs))
-        f_ihs = np.fft.fft2(ihs)
         g_pan = f_pan * h_high
-        g_ihs = f_ihs * h_low
-        g = g_pan + g_ihs
-        f_pan = np.fft.ifft2(g)
-        ps1 = f_pan + ms1 - ihs
-        ps2 = f_pan + ms2 - ihs
-        ps3 = f_pan + ms3 - ihs
+        f_ms1 = np.fft.fft2(ms1)
+        f_ms2 = np.fft.fft2(ms2)
+        f_ms3 = np.fft.fft2(ms3)
+        g_ms1 = f_ms1 * h_low
+        g_ms2 = f_ms2 * h_low
+        g_ms3 = f_ms3 * h_low
+        f_ps1 = g_pan + g_ms1
+        f_ps2 = g_pan + g_ms2
+        f_ps3 = g_pan + g_ms3
+        ps1 = np.fft.ifft2(f_ps1)
+        ps2 = np.fft.ifft2(f_ps2)
+        ps3 = np.fft.ifft2(f_ps3)
         return ps1, ps2, ps3
     elif ps_method == 'lab':
         # CIE Lab transform
@@ -783,33 +788,7 @@ def hfm_calc_ps(band):
         ps2 = ms2 * pan / f_pan2
     elif band == 3:
         ps3 = ms3 * pan / f_pan3
-        
-def fihs_fft(band):
-    import numpy as np
-    global f_pan
-    global ihs
-    global f_ihs
-    if band == 1:
-        f_pan = np.fft.fft2(f_pan)
-    elif band == 2:
-        f_ihs = np.fft.fft2(ihs)
-    
-def fihs_create_ps(band):
-    global f_pan
-    global ms1
-    global ms2
-    global ms3
-    global ihs
-    global ps1
-    global ps2
-    global ps3
-    if band == 1:
-        ps1 = f_pan + ms1 - ihs
-    elif band == 2:
-        ps2 = f_pan + ms2 - ihs
-    elif band == 3:
-        ps3 = f_pan + ms3 - ihs
-    
+
 """
 ##############################################################################
     Starting Main Program
@@ -843,10 +822,6 @@ if __name__ == "__main__":
     ps1 = np.empty((m,n), dtype='float64')
     ps2 = np.empty((m,n), dtype='float64')
     ps3 = np.empty((m,n), dtype='float64')
-    h_low = np.empty((m,n), dtype='float64')
-    h_high = np.empty((m,n), dtype='float64')
-    ihs = np.empty((m,n), dtype='float64')
-    f_ihs = np.empty((m,n), dtype='float64')
     try:
         time_scores = []
         for i in range(run_times):
@@ -922,21 +897,44 @@ if __name__ == "__main__":
             elif (ps_method == 'ihs_fft' and (is_multi_thread)):
                 h_low = ffilters(filter_name, m, n, cutoff, 1)
                 h_high = np.ones((m,n)) - h_low
+                # IHS Transform
                 ihs = np.multiply((1.0/3.0), (ms1 + ms2 + ms3))
-                f_pan = hist_match(pan, ihs)
-                th1 = th.Thread(target=fihs_fft, name='th1', args=(1,))
-                th2 = th.Thread(target=fihs_fft, name='th1', args=(2,))
-                th1.start(); th2.start()
-                th1.join(); th2.join()
-                g_pan = f_pan * h_high
-                g_ihs = f_ihs * h_low
-                g = g_pan + g_ihs
-                f_pan = np.fft.ifft2(g)
-                th3 = th.Thread(target=fihs_create_ps, name='th3', args=(1,))   # ps1
-                th4 = th.Thread(target=fihs_create_ps, name='th4', args=(2,))   # ps2
-                th5 = th.Thread(target=fihs_create_ps, name='th5', args=(3,))   # ps3
-                th3.start(); th4.start(); th5.start()
-                th3.join(); th4.join(); th5.join()                
+                # Part 1&2 - Histogram matching & FFT PAN
+                f_pan = np.fft.fft2(hist_match(pan, ihs))
+                # Part 3 - Filtering PAN
+                f_pan = f_pan * h_high
+                # Part 4 - FFT MS
+                th1 = th.Thread(target=fft2_ms_mt, name='th1', args=(1,))
+                th2 = th.Thread(target=fft2_ms_mt, name='th2', args=(2,))
+                th3 = th.Thread(target=fft2_ms_mt, name='th3', args=(3,))
+                # Part 5 - Filtering MS
+                th4 = th.Thread(target=filter_ms_mt, name='th4', args=(1,h_low))
+                th5 = th.Thread(target=filter_ms_mt, name='th5', args=(2,h_low))
+                th6 = th.Thread(target=filter_ms_mt, name='th6', args=(3,h_low))
+                # Part 6 - Creating Pan-Sharpenned Image
+                th7 = th.Thread(target=create_f_ps_im_mt, name='th7', args=(11,))
+                th8 = th.Thread(target=create_f_ps_im_mt, name='th8', args=(22,))
+                th9 = th.Thread(target=create_f_ps_im_mt, name='th9', args=(33,))
+                # Part7 - I-FFT of PS Image
+                th10 = th.Thread(target=ifft2_mt, name='th10', args=(1,))
+                th11 = th.Thread(target=ifft2_mt, name='th11', args=(2,))
+                th12 = th.Thread(target=ifft2_mt, name='th12', args=(3,))
+                # Run Part 4
+                th1.start(); th2.start(); th3.start()
+                # Run Part 5
+                th1.join(); th4.start()
+                th2.join(); th5.start()
+                th3.join(); th6.start()
+                # Run Part 6
+                th4.join(); th7.start()
+                th5.join(); th8.start()
+                th6.join(); th9.start()
+                # Run Part 7
+                th7.join(); th10.start()
+                th8.join(); th11.start()
+                th9.join(); th12.start()
+                # Wait till all threads are done
+                th10.join(); th11.join(); th12.join()
             elif (ps_method == 'lab' and (is_multi_thread)):
                 xyz = np.empty((3,m*n), dtype='float64')
                 x = np.empty((1,m*n), dtype='float64')
@@ -990,7 +988,7 @@ if __name__ == "__main__":
                 th2 = th.Thread(target=brovey_calc_ps, name='th2', args=(2,))
                 th3 = th.Thread(target=brovey_calc_ps, name='th3', args=(3,))
                 th1.start(); th2.start(); th3.start()
-                th1.join(); th2.join(); th3.join()
+                th1.join(); th2.join(); th3.join()                
             elif (ps_method == 'hfm' and (is_multi_thread)):
                 m, n = np.shape(pan)
                 h_low = ffilters(filter_name, m, n, cutoff, 1)
@@ -1060,8 +1058,9 @@ if __name__ == "__main__":
                                   xml_file=path_xml, ms_pan_ratio=0.25)
         results.append({p_method: result})
         print p_method, "\tscores:", str(result)
-    """
+    
     # Write stats to file
+    """
     fields = ['#TIMESTAMP','#MULTI_THREAD','#COMPUTE_TIME','#IM_X','#IM_Y','#PS_METHOD',
               '#FOURIER_FILTER','#CUTOFF_FREQ','#SAM_B1','#SAM_B2','#SAM_B3','#RMSE_B1',
               '#RMSE_B2','#RMSE_B3','#RASE','#ERGAS','#INPUT_MS','#OUT_FILE']
@@ -1107,6 +1106,7 @@ if __name__ == "__main__":
     scipy.misc.toimage(im_ps[50:300,50:300,:], cmin=0.0, cmax=1.0).save(im_path2)
     scipy.misc.toimage(im_ref, cmin=0.0, cmax=1.0).save(im_path3)
     scipy.misc.toimage(im_ref[50:300,50:300,:], cmin=0.0, cmax=1.0).save(im_path4)
+    
     # Print
     """
     fig, (ax1, ax2) = plt.subplots(ncols=2)
@@ -1115,11 +1115,11 @@ if __name__ == "__main__":
     
     fig, (ax1, ax2) = plt.subplots(ncols=2)
     ax1.imshow(ms1,cmap=plt.cm.Reds)
-    ax2.imshow(ps1,cmap=plt.cm.Reds)
+    ax2.imshow(a1,cmap=plt.cm.Reds)
     
     fig, (ax1, ax2) = plt.subplots(ncols=2)
     ax1.imshow(ms2,cmap=plt.cm.Greens)
-    ax2.imshow(ps2,cmap=plt.cm.Greens)
+    ax2.imshow(a2,cmap=plt.cm.Greens)
     
     fig, (ax1, ax2) = plt.subplots(ncols=2)
     ax1.imshow(ms3,cmap=plt.cm.Blues)
